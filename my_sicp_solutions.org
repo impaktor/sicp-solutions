@@ -1,0 +1,269 @@
+#+TITLE: My solutions to "Structure and Interpretation of Computer Programs" by Hal Abelson and Gary J. Susman
+
+* Links:
+** Book and lectures
+   http://mitpress.mit.edu/sicp/
+   [[http://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-001-structure-and-interpretation-of-computer-programs-spring-2005/video-lectures/][video lectures]]
+
+   [[http://sicpebook.wordpress.com/][sicp - ebook]]
+   [[http://www.neilvandyke.org/sicp-texi/][sicp - texi]]
+   [[https://github.com/sarabander/sicp-pdf][github: sicp - pdf + LaTeX source]]
+
+** Solutions
+   [[http://eli.thegreenplace.net/category/programming/lisp/sicp/][SICP solutions ch 1-5, in common lisp]]
+   [[http://wqzhang.wordpress.com/sicp-solutions/][SICP solutions ch 1-4, in Scheme]]
+   [[https://github.com/sarabander/p2pu-sicp][SICP solutions ch 1-3, in Scheme]]
+   [[http://telegraphics.com.au/svn/puzzles/trunk/sicp/][SICP solutions ch 1-2, in Scheme]]
+
+* Scheme implementations to use
+  There are many scheme implementations [[%20http://community.schemewiki.org/?scheme-faq-standards#implementations][out there]].
+
+  For non-Emacs users/beginners [[http://racket-lang.org/][Racket]] is a given. Now a language of its own,
+  it used to be a scheme implementation called PLT scheme.
+
+  MIT scheme is what is used in the book, although some changes have been
+  made in the implementation since then. Notably =nil= is no longer used, and
+  ='()= can be used instead.
+
+  I've used [[http://www.call-cc.org/][chicken-scheme]] for Chapter 2, and [[https://www.gnu.org/software/guile/][guile]] for chapter 3.
+
+  I've decided to go with guile for here on out. It's the official extension
+  language of GNU, and it has excellent integration with C/C++, which can be
+  useful to extend any program.
+
+* Emacs and scheme
+** SCHEME-MODE (for all scheme implementations)
+ Use M-x run-scheme
+ anv: M-x scheme-send-region skriver ut resultatet i *scheme* bufferten. (C-c C-r)
+
+ Vanlig scheme:
+ C-c C-r  scheme-send-region
+ C-c C-e  scheme-send-definition
+ C-x C-e  evaluate expression before point
+ C-c C-l  load file (evaluates everything in file)
+ C-c C-z  switch to/from *scheme* buffer
+ C-c M-r  same as C-c C-r but go to *scheme* buffer as well
+ C-c M-e  same as C-c C-e but go to *scheme* buffer as well
+ C-c C-k  scheme-compile-file
+ C-c M-c  scheme-compile-definition
+
+** XSCHEME (for just MIT-scheme)
+ (require 'xscheme)
+ Om jag också laddar xscheme innan jag laddar scheme-mode är det tydligen M-C-< för xscheme-send-region.
+ denna visar resultatet i minibufferten, tillskillnad från vanliga scheme-mode
+
+Use M-x start-scheme
+
+ M-RET     xscheme-send-previous-expression
+ C-M-x     xscheme-send-definition
+ C-M-z     xscheme-send-region
+ M-o       xscheme-send-buffer
+ C-x C-e   eval expression before point
+ C-c C-s   switch to (but not from?) *scheme* buffer
+
+
+FUNDERING: Varför måste jag göra C-c C-e två gånger efter ett expression?
+
+* My solutions
+** Chapter 1
+** Chapter 2
+** Chapter 3
+*** ex 3.01
+
+#+BEGIN_SRC scheme :tangle ex_3.01.scm
+(define (make-accumulator initial-value)
+  (lambda (current-value)
+    (set! initial-value (+ current-value initial-value))
+    initial-value))
+
+;;test:
+(define a (make-accumulator 100))
+(a 10)
+(a 15)
+(a 1)
+
+;; Or an alternative more round-about way:
+(define (make-accumulator initial)
+  (let ((sum initial))
+    (lambda (a)
+      (set! sum (+ sum a))
+      sum)))
+
+#+END_SRC
+*** TODO ex 3.02
+    Here's something interesting. Should one used =let= or =define=?
+
+    read: http://stackoverflow.com/questions/2060744/what-are-the-benefits-of-letrec
+
+#+BEGIN_SRC scheme :tangle ex_3.02.scm
+;; my solution from (2014-02-04)
+(define (make-monitored f)
+  (let ((counter 0))
+    (define (mf a)
+      (cond ((eq? a 'how-many-calls?)
+             counter)
+            ((eq? a 'reset-counter)
+             (begin
+               (set! counter 0)
+               counter))
+            (#t
+             (begin
+               (set! counter (+ counter 1))
+               (f a)))))
+    mf))
+
+;; my first attempt, from 2013?
+(define (make-monitored op)
+  (define iter 0)
+  (define (dispatch x)
+    (cond ((eq? x 'how-many-calls?) iter)
+          ((number? x)
+           (set! iter (+ 1 iter))
+           (op x))
+          (else (error "invalid name" op))))
+  dispatch)
+
+
+;; Test:
+
+(define (sqr a)
+  (* a a))
+
+(define sqr-m (make-monitored sqr))
+
+(sqr-m 'how-many-calls?)
+(sqr-m 2)
+(sqr-m 3)
+(sqr-m 'reset-counter)
+
+#+END_SRC
+**** #scheme
+#+BEGIN_EXAMPLE
+  I'm doing the first exercises in sicp Ch3. Looking at the solution of ex3.2
+  he uses "(let ((call-count 0)))" but I used (define call-count 0), is there
+  a difference, other than the fact that (let) lets you control where the
+  variable becomes undefined? My version (with "define" instead of "let" seems
+  to work fine). http://eli.thegreenplace.net/2007/09/25/sicp-section-311/
+
+<mark_weaver> impaktor: internal 'define's are equivalent to 'letrec' before
+              R6RS, and in R6RS and R7RS they are equivalent to 'letrec*'.
+<impaktor> What's the difference between 'letrec' and 'let'?  [16:25]
+<mark_weaver> impaktor: 'letrec' is a recursive form of 'let'.  The
+              initializer expressions are allowed to reference the new
+              variables being bound.  [16:27]
+<mark_weaver> For example:
+<mark_weaver> (define x 1) (define y 2) (let ((x y) (y x)) (list x y))
+<mark_weaver> that will return (2 1)
+<wbooze> swap ?  [16:28]
+<mark_weaver> because the initializer expressions 'y' and 'x' do _not_ see the
+              internal 'x' and 'y' in scope, so they refer to the outer 'y'
+              and 'x'.
+<mark_weaver> you cannot do that with either 'let*' or 'letrec'.
+<mark_weaver> on the other hand, with 'letrec' you can define
+              mutually-recursive internal procedures.  [16:29]
+<mark_weaver> For example:
+<mark_weaver> (define (even? x) (letrec ((my-even? (lambda (x) (or (zero? x)
+              (my-odd? (- x 1))))) (my-odd? (lambda (x) (my-even? (- x 1)))))
+              (my-even? x)))  [16:30]
+<mark_weaver> (sorry for the lack of indentation)  [16:31]
+<mark_weaver> oops, that 'my-odd?' should be (lambda (x) (and (positive? x)
+              (my-even (- x 1))))  [16:32]
+<wbooze> you're odd x 1  [16:33]
+<mark_weaver> huh?
+<wbooze> erm, joke, with regards to my reading of those forms.......  [16:35]
+<mark_weaver> ah, okay :)  [16:36]
+<wbooze> how much of that what you have said does also hold for cl's let ?
+<wbooze> :)
+<impaktor> OK, thanks.  [16:38]
+<mark_weaver> I haven't said much about 'let', but although I'm rusty at CL, I
+              believe it all does.
+<mark_weaver> impaktor: note, however, that it is an error if any of the
+              initializer expressions actually fetch any of the values of the
+              'letrec's bindings before they've all been initialized.  [16:39]
+<mark_weaver> impaktor: which essentially means that you can only refer
+              recursively to the 'letrec' bindings from within 'lambda' or
+              'delay' expressions (or something that acts similarly)  [16:40]
+#+END_EXAMPLE
+
+*** ex 3.03
+#+BEGIN_SRC scheme :tangle ex_3.03.scm
+(define (make-account balance my-password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch password m)
+    (if (eq? password my-password)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE ACCOUNT" m)))
+        (error "Wrong password" password)))
+  dispatch)
+
+;;Test:
+(define myacc (make-account 100 'test))
+((myacc 'test 'deposit) 10)
+#+END_SRC
+*** ex 3.04
+    Note that all functions dispatched need to take an argument.
+#+BEGIN_SRC scheme :tangle ex_3.04.scm
+(define (make-account balance my-password)
+  (let ((incorrect-pass-number 0))
+    (define (withdraw amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "insufficient funds"))
+    (define (deposit amount)
+      (set! balance (+ balance amount))
+      balance)
+    (define (call-the-cops amount) ;; note: need the arg
+      "The man is comming")
+    (define (display-error amount) ;; note: need the arg
+      "wrong password")
+    (define (dispatch password m)
+      (if (eq? password my-password)
+          (cond ((eq? m 'withdraw) withdraw)
+                ((eq? m 'deposit) deposit)
+                (else (error "Unknown request -- MAKE ACCOUNT" m)))
+          (begin (set! incorrect-pass-number (+ incorrect-pass-number 1))
+                 (if (< 3 incorrect-pass-number)
+                     call-the-cops
+                     display-error))))
+    dispatch))
+
+;;Test:
+(define myacc (make-account 100 'spock))
+((myacc 'spock 'deposit) 10)
+((myacc 'kirk 'withdraw) 10)
+#+END_SRC
+*** TODO ex 3.05
+#+BEGIN_SRC scheme :tangle ex_3.05.scm
+
+#+END_SRC
+
+*** TODO ex 3.06
+#+BEGIN_SRC scheme :tangle ex_3.06.scm
+
+#+END_SRC
+
+*** TODO ex 3.07
+#+BEGIN_SRC scheme :tangle ex_3.07.scm
+
+#+END_SRC
+*** TODO ex 3.08
+#+BEGIN_SRC scheme :tangle ex_3.08.scm
+
+#+END_SRC
+* primitives
+  Here I make not of some handy functions I might not remember:
+** Predicates of Chapter 2
+   | Name   | Description                     |
+   |--------+---------------------------------|
+   | eq?    | for symbols (eq? 'a 'b)         |
+   | =      | for numbers (= 1 1)             |
+   | equal? | for two lists of symbols p. 145 |
