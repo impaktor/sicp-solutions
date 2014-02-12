@@ -9,6 +9,8 @@
    [[http://www.neilvandyke.org/sicp-texi/][sicp - texi]]
    [[https://github.com/sarabander/sicp-pdf][github: sicp - pdf + LaTeX source]]
 
+   [[http://hyperpolyglot.org/lisp][Comparison of elisp, common-lisp, and racket]]
+
 ** Solutions
    [[http://eli.thegreenplace.net/category/programming/lisp/sicp/][SICP solutions ch 1-5, in common lisp]]
    [[http://wqzhang.wordpress.com/sicp-solutions/][SICP solutions ch 1-4, in Scheme]]
@@ -241,24 +243,260 @@ FUNDERING: Varför måste jag göra C-c C-e två gånger efter ett expression?
 ((myacc 'spock 'deposit) 10)
 ((myacc 'kirk 'withdraw) 10)
 #+END_SRC
-*** TODO ex 3.05
+*** ex 3.05
+    Probability to place a random number from the interval of the rectangle in
+    the circle is proportional to the ratio of the area between them:
+    : A(circle)/A(square) = 3^2 pi / 6^2 = pi / 4
 #+BEGIN_SRC scheme :tangle ex_3.05.scm
+  ;; radius 3 centered at (5, 7)
+  (define (in-circle? x y)
+    (>= (* 3 3)
+        (+ (* (- x 5) (- x 5))
+           (* (- y 7) (- y 7)))))
 
+  ;; gives number in inclusive interval [low,high]
+  (define (random-in-range low high)
+    (let ((range (- high low)))
+      (+ low (random (* 1.0 range)))))
+
+  ;; feed in coordinates of the rectangle
+  (define (pi-test)
+    (in-circle? (random-in-range 2 8) (random-in-range 4 10)))
+
+  (define (monte-carlo trials experiment)
+    (define (iter trials-remaining trials-passed)
+      (cond ((= trials-remaining 0)
+             (/ trials-passed trials))
+            ((experiment)
+             (iter (- trials-remaining 1) (+ trials-passed 1)))
+            (else
+             (iter (- trials-remaining 1) trials-passed))))
+    (iter trials 0))
+
+  (define (estimate-pi trials)
+    (* 4.0 (monte-carlo trials pi-test)))
+
+  ;; test
+  (estimate-pi 10000)
 #+END_SRC
 
-*** TODO ex 3.06
+*** ex 3.06
+    In Guile we can set the seed to the [[https://www.gnu.org/software/guile/manual/html_node/Random.html][random number generator]] =random= in two
+    ways, either use the global variable that holds the state:
+#+begin_src scheme :tangle no
+  (set! *random-state* (seed->random-state 1))
+  (random 4.0)
+  (set! *random-state* (seed->random-state 1))
+  (random 4.0)
+#+end_src
+
+    or pass the state as an optional argument to =random=
+#+BEGIN_SRC scheme :tangle no
+  (define state (seed->random-state 1))
+  (random 4.0 state)
+  (set! state (seed->random-state 1))
+  (random 4.0 state)
+#+END_SRC
+
+    Here's my solution. It is key to always have the encapsulated "global"
+    variable defined outside the frame where the procedure operates on it
+    (maybe badly worded). So have a =let= (or outer function argument) to
+    define the variable, and then a =lambda= (or =define= a dispatch function)
+    to =set!= it, and return that.
 #+BEGIN_SRC scheme :tangle ex_3.06.scm
+  ;; method one
+  (define rand
+    (let ((seed (seed->random-state 0)))
+      (define (dispatch mode)
+        (cond ((eq? mode 'generate)
+               (random 10.0 seed))
+              ((eq? mode 'reset)
+               (lambda (new-seed)
+                 (set! seed (seed->random-state new-seed))
+                 (random 10.0 seed)))))
+      dispatch))
 
+  ;; method two, this is cheating, since using a predefined global
+  (define (rand mode)
+    (cond ((eq? mode 'generate)
+           (random 10.0))
+          ((eq? mode ' reset)
+           (lambda (new-seed)
+             (set! *random-state* (seed->random-state new-seed))
+             (random 10.0)))))
+
+  ;; tets
+  (rand 'generate)
+  ((rand 'reset) 0)
 #+END_SRC
 
-*** TODO ex 3.07
+*** ex 3.07
+    This solution seems to work, but it does not require a rewrite of the 3.3
+    solution, nor does it make use of additional =set!= calls.
 #+BEGIN_SRC scheme :tangle ex_3.07.scm
+  ;; from ex 3.03
+  (define (make-account balance my-password)
+    (define (withdraw amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "insufficient funds"))
+    (define (deposit amount)
+      (set! balance (+ balance amount))
+      balance)
+    (define (dispatch password m)
+      (if (eq? password my-password)
+          (cond ((eq? m 'withdraw) withdraw)
+                ((eq? m 'deposit) deposit)
+                (else (error "Unknown request -- MAKE ACCOUNT" m)))
+          (error "Wrong password" password)))
+    dispatch)
 
+
+  ;; does not use set?
+  (define (make-joint source source-pass new-pass)
+    (lambda (password operation)
+      (if (eq? password new-pass)
+          (source source-pass operation)
+          (error "bad password" password))))
+
+  ;; test
+  (define spock-acc (make-account 100 'prosper))
+  (define kirk-acc (make-joint spock-acc 'prosper 'meat))
+
+  ((spock-acc 'prosper 'withdraw) 40)
+  ((spock-acc 'prosper 'deposit) 10)
+  ((kirk-acc 'meat 'deposit) 10)
+
+  ;; test bad password
+  ((spock-acc 'astrology 'withdraw) 40)
+  ((kirk-acc 'logic 'deposit) 10)
 #+END_SRC
-*** TODO ex 3.08
+
+    An alternative was found, that might be saner?
+#+begin_src scheme :tangle no
+  (define (make-account balance password)
+    (define (withdraw amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "Insufficient funds"))
+    (define (deposit amount)
+      (set! balance (+ balance amount))
+      balance)
+    (define (display-error amount)
+      "Incorrect password")
+    (let ((password-list (list password)))
+      (define (make-joint new-password)
+        (set! password-list (cons new-password password-list))
+        dispatch)
+      (define (dispatch p m)
+        (if (memq p password-list)
+            (cond ((eq? m 'withdraw) withdraw)
+                  ((eq? m 'deposit) deposit)
+                  ((eq? m 'make-joint) make-joint)
+                  (else (error "Unknown request -- MAKE-ACCOUNT" m)))
+            display-error))
+      dispatch))
+
+  (define (make-joint account old-password new-password)
+    ((account old-password 'make-joint) new-password))
+
+  ;; test
+  (define spock (make-account 100 'ohura))
+  (define kirk (make-joint spock 'ohura 'balls))
+  ((spock 'ohura 'withdraw) 45)
+  ((kirk 'balls 'withdraw) 15)
+
+#+end_src
+*** ex 3.08
+    I think the trick here is to create a frame where we have a counter specified,
+    i.e. have a variable specified outside a function definition (lambda or
+    define a dispatch function) that is returned when calling f.
 #+BEGIN_SRC scheme :tangle ex_3.08.scm
+  (define (make-f)
+    (let ((first-call #t))
+      (lambda (m)
+        (if first-call
+            (begin (set! first-call #f)
+                   0)
+            m))))
+
+  ;; test:
+  (define f (make-f))
+  (+ (f 0) (f 1))
+  ;; -> 1
+
+  (define f (make-f))
+  (+ (f 1) (f 0))
+  ;; -> 0
 
 #+END_SRC
+
+    Alternative solution:
+#+begin_src scheme :tangle no
+;; alternativ version från Eli Benderskys sida
+(define g
+  (let ((state 1))
+    (lambda (n)
+      (set! state (* state n))
+      state)))
+#+end_src
+*** ex 3.09
+    NOTE: Environments are the pointers. =OO= denotes a procedure object.
+
+    In the book they say: "we will not dwell on how these values are
+    returned", i.e. how the values are returned and bould up =(* 6 5 4 3 2 1)=
+    is a matter for chapter 5.
+
+    Recursive version:
+#+BEGIN_SRC example
+                           +-->  OO---> parameters: n
+global env                 |     |      body: (if (= n 1)
+      |                    |     |                1
+      V                    |     V                (* n (factorial (- n 1))))
+  +------------------------|-------------------------------------------------------------------+
+  |                        |                                                                   |
+  |         factorial: ----+                                                                   |
+  |                                                                                            |
+  +--------------------------------------------------------------------------------------------+
+            A                         A                       A                            A
+            |                         |                       |                            |
+       +--------+                +--------+              +--------+                   +--------+
+       | n:6    |                | n:5    |              | n:4    |                   | n:1    |
+ E1 -> |        |          E2 -> |        |        E3 -> |        |   ...       E6 -> |        |   .
+       |        |                |        |              |        |                   |        |
+       +--------+                +--------+              +--------+                   +--------+
+ (if (= n 1)                    (if (= n 1) ...)      (if (= n 1) ...)             (if (= n 1) ...)
+     1
+     (* n (factorial (- n 1))))
+#+END_SRC
+
+    Iterative version:
+#+BEGIN_SRC example
+                +--OO--> parameters: prod, count, max
+global env      |   |     body: (if (> count max)
+      |   |   | prod                                        |   |                         |
+      |   |   | (fact-iter (* count prod) (+ count 1) max)) |   |                         |
+      |   |   |                                             |   |                         |
+      |   |   | +--> OO--> parameters: n                    |   |                         |
+      |   |   |                                             |   | body: (fact-iter 1 1 n) |
+      V         V   |   |    V
+  +-----------------|---|---------------------------------------------------------------------+
+  |                 |   |                                                                     |
+  |  fact-iter: ----+   |                                                                     |
+  |  factorial:---------+                                                                     |
+  +-------------------------------------------------------------------------------------------+
+            A                         A                       A                            A
+            |   |   |   |
+       +--------+                +--------+              +--------+                   +---------+
+       | n:6    |                |prod:1  |              |prod:1  |                   | prod:720|
+ E1 -> |        |          E2 -> |count:1 |        E3 -> |count:2 |     ...     E8 -> | count:7 |
+       |   |   | max:6 |   | max:6 |   | max:6 |
+       +--------+                +--------+              +--------+                   +---------+
+ (fact-iter 1 1 n)          (if (> count ) ...)      (if (> count ) ...)             (if (> count ) ...)
+#+END_SRC
+
 * primitives
   Here I make not of some handy functions I might not remember:
 ** Predicates of Chapter 2
